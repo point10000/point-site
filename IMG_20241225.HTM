@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedGetter ver.α.2</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1a1a1a;
+        }
+
+        .game-container {
+            text-align: center;
+            background-color: #333;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            width: 400px;
+            position: relative;
+        }
+
+        .score {
+            font-size: 4em;
+            color: #0f0;
+            text-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+            letter-spacing: 4px;
+            margin-bottom: 15px;
+        }
+
+        .instructions {
+            font-size: 1.5em;
+            margin-top: 20px;
+            color: #bbb;
+        }
+
+        .item-info {
+            font-size: 1.2em;
+            color: #ff0;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-top: 20px;
+        }
+
+        .input-group input {
+            font-size: 1.5em;
+            width: 60px;
+            text-align: center;
+        }
+
+        .input-group button {
+            font-size: 1.5em;
+            padding: 5px 15px;
+            cursor: pointer;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+
+        #scoreGraph {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            border: 2px solid #fff;
+            background-color: #111;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div class="score">0</div> <!-- スコアの数値のみを表示 -->
+    <div class="item-info">
+        <div>CPU: 0個 (3)</div>
+        <div>効率: 1 (7)</div>
+        <div>ボーナス: 0% (21)</div>
+    </div>
+    <div class="input-group">
+        <input type="number" id="cpuQuantity" value="1" min="1" step="1">
+        <button onclick="buyCPUBulk()">購入</button>
+    </div>
+    <div class="input-group">
+        <input type="number" id="efficiencyQuantity" value="1" min="1" step="1">
+        <button onclick="buyEfficiencyBulk()">購入</button>
+    </div>
+    <div class="input-group">
+        <input type="number" id="bonusQuantity" value="1" min="1" step="1">
+        <button onclick="buyBonusBulk()">購入</button>
+    </div>
+
+    <!-- 保存ボタン -->
+    <div class="input-group">
+        <button id="saveButton" onclick="saveGame()" disabled>保存</button>
+    </div>
+
+    <!-- ゲームの読み込みボタン -->
+    <div class="input-group">
+        <button onclick="loadGameFromFile()">ゲームを読み込む</button>
+    </div>
+
+    <!-- データリセットボタン -->
+    <div class="input-group">
+        <button onclick="resetGame()">データリセット</button>
+    </div>
+</div>
+
+<canvas id="scoreGraph" width="300" height="200"></canvas>
+
+<script>
+    let score = 0;
+    let cpuCount = 0;  // CPUの数
+    let efficiency = 1;  // クリック時の効率
+    let bonusPercentage = 0;  // ボーナスの割合（%）
+    let cpuPrice = 3;  // CPUの初期価格
+    let efficiencyPrice = 7;  // 効率の初期価格
+    let bonusPrice = 21;  // ボーナスの初期価格
+    let bonusInterval = 10000;  // ボーナスの更新間隔（10秒ごとに）
+    let scoreDisplay = document.querySelector('.score');
+    let itemInfoDisplay = document.querySelector('.item-info');
+    let saveButton = document.getElementById('saveButton');
+    let canvas = document.getElementById('scoreGraph');
+    let ctx = canvas.getContext('2d');
+
+    let scoreHistory = [];  // スコア履歴（過去30秒のスコアを記録）
+
+    function formatScore(score) {
+        return score.toString();  // 数値をそのまま文字列に変換（桁区切りなし）
+    }
+
+    function updateScoreDisplay() {
+        scoreDisplay.textContent = formatScore(score);  // スコアの数値だけを表示
+        saveButton.disabled = false; // スコアが変化したら保存ボタンを有効化
+    }
+
+    function saveGame() {
+        const gameState = {
+            score,
+            cpuCount,
+            efficiency,
+            bonusPercentage,
+            cpuPrice,
+            efficiencyPrice,
+            bonusPrice
+        };
+
+        // ゲーム状態をJSONとして保存
+        const gameStateJSON = JSON.stringify(gameState);
+        const blob = new Blob([gameStateJSON], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'game_state.json';
+        link.click();
+        alert('ゲームを保存しました！');
+        saveButton.disabled = true; // 保存後は再度無効化
+    }
+
+    function loadGameFromFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const gameState = JSON.parse(e.target.result);
+                score = gameState.score;
+                cpuCount = gameState.cpuCount;
+                efficiency = gameState.efficiency;
+                bonusPercentage = gameState.bonusPercentage;
+                cpuPrice = gameState.cpuPrice;
+                efficiencyPrice = gameState.efficiencyPrice;
+                bonusPrice = gameState.bonusPrice;
+
+                updateScoreDisplay();
+                updateItemInfo();
+            };
+            reader.readAsText(file);
+        });
+        input.click();
+    }
+
+    function updateItemInfo() {
+        itemInfoDisplay.innerHTML = `
+            <div>CPU: ${cpuCount}個 (${cpuPrice})</div>
+            <div>効率: ${efficiency} (${efficiencyPrice})</div>
+            <div>ボーナス: ${bonusPercentage}% (${bonusPrice})</div>
+        `;
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.code === 'Space') {
+            score += efficiency;
+            updateScoreDisplay();
+        }
+    });
+
+    setInterval(() => {
+        score += cpuCount;
+        updateScoreDisplay();
+        trackScoreHistory();
+    }, 1000);
+
+    setInterval(() => {
+        if (bonusPercentage > 0) {
+            let bonusAmount = score * (bonusPercentage / 100);
+            score += Math.floor(bonusAmount);
+            updateScoreDisplay();
+        }
+    }, bonusInterval);
+
+    function trackScoreHistory() {
+        scoreHistory.push(score);
+        if (scoreHistory.length > 30) {
+            scoreHistory.shift();
+        }
+        updateScoreGraph();
+    }
+
+    function updateScoreGraph() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (scoreHistory.length === 0) return;
+        let maxScore = Math.max(...scoreHistory);
+        let scale = canvas.height / maxScore;
+        ctx.strokeStyle = '#0f0';
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - scoreHistory[0] * scale);
+        for (let i = 1; i < scoreHistory.length; i++) {
+            ctx.lineTo(i * (canvas.width / 30), canvas.height - scoreHistory[i] * scale);
+        }
+        ctx.stroke();
+    }
+
+    function buyCPUBulk() {
+        let quantity = parseInt(document.getElementById('cpuQuantity').value);
+        let totalPrice = cpuPrice * quantity;
+        if (score >= totalPrice) {
+            score -= totalPrice;
+            cpuCount += quantity;
+            cpuPrice = Math.floor(cpuPrice * 1.4); // 価格を40%上昇
+            updateScoreDisplay();
+            updateItemInfo();
+        } else {
+            alert('スコアが不足しています。');
+        }
+    }
+
+    function buyEfficiencyBulk() {
+        let quantity = parseInt(document.getElementById('efficiencyQuantity').value);
+        let totalPrice = efficiencyPrice * quantity;
+        if (score >= totalPrice) {
+            score -= totalPrice;
+            efficiency += quantity;
+            efficiencyPrice = Math.floor(efficiencyPrice * 1.6); // 価格を60%上昇
+            updateScoreDisplay();
+            updateItemInfo();
+        } else {
+            alert('スコアが不足しています。');
+        }
+    }
+
+    function buyBonusBulk() {
+        let quantity = parseInt(document.getElementById('bonusQuantity').value);
+        let totalPrice = bonusPrice * quantity;
+        if (score >= totalPrice) {
+            score -= totalPrice;
+            bonusPercentage += 10 * quantity;  // ボーナスを10%ずつ増加
+            bonusPrice = Math.floor(bonusPrice * 1.8); // 価格を80%上昇
+            updateScoreDisplay();
+            updateItemInfo();
+        } else {
+            alert('スコアが不足しています。');
+        }
+    }
+
+    function resetGame() {
+        // ゲームの状態を初期化
+        score = 0;
+        cpuCount = 0;
+        efficiency = 1;
+        bonusPercentage = 0;
+        cpuPrice = 3;
+        efficiencyPrice = 7;
+        bonusPrice = 21;
+
+        // ローカルストレージをクリア
+        localStorage.removeItem('redgetterSave');
+
+        // スコアとアイテム情報を更新
+        updateScoreDisplay();
+        updateItemInfo();
+        alert('ゲームのデータがリセットされました。');
+    }
+</script>
+
+</body>
+</html>
